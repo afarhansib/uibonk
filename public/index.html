@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Bot Manager</title>
+</head>
+<body>
+    <h1>Minecraft Bot Manager</h1>
+
+    <div>
+        <h2>Start a Bot</h2>
+        <input type="text" id="botName" placeholder="Bot Name">
+        <input type="text" id="repoUrl" placeholder="Repository URL (e.g., https://github.com/user/repo.git)">
+        <button id="startBot">Start Bot</button>
+    </div>
+
+    <div>
+        <h2>Bots</h2>
+        <ul id="botList"></ul>
+    </div>
+
+    <div>
+        <h2>Console</h2>
+        <textarea id="consoleOutput" readonly></textarea>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let currentBot = null;
+
+        document.getElementById('startBot').addEventListener('click', () => {
+            const botName = document.getElementById('botName').value;
+            const repoUrl = document.getElementById('repoUrl').value;
+
+            if (!botName || !repoUrl) {
+                alert('Please provide both a bot name and repository URL');
+                return;
+            }
+
+            socket.emit('startBot', { repoUrl, botName });
+        });
+
+        socket.on('botStarted', ({ name }) => {
+            const botList = document.getElementById('botList');
+            const li = document.createElement('li');
+            li.textContent = name;
+            li.addEventListener('click', () => {
+                currentBot = name;
+                document.getElementById('consoleOutput').value = '';
+            });
+            botList.appendChild(li);
+        });
+
+        socket.on('botOutput', ({ name, output }) => {
+            if (name === currentBot) {
+                document.getElementById('consoleOutput').value += output;
+            }
+        });
+
+        socket.on('botError', ({ name, error }) => {
+            if (name === currentBot) {
+                document.getElementById('consoleOutput').value += `[ERROR] ${error}`;
+            }
+        });
+
+        socket.on('botClosed', ({ name }) => {
+            if (name === currentBot) {
+                currentBot = null;
+                document.getElementById('consoleOutput').value += `\nBot ${name} closed\n`;
+            }
+        });
+
+        socket.on('error', (message) => {
+            alert(message);
+        });
+    </script>
+</body>
+</html>
