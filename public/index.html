@@ -1,80 +1,208 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft Bot Manager</title>
-</head>
-<body>
-    <h1>Minecraft Bot Manager</h1>
-
-    <div>
-        <h2>Start a Bot</h2>
-        <input type="text" id="botName" placeholder="Bot Name">
-        <input type="text" id="repoUrl" placeholder="Repository URL (e.g., https://github.com/user/repo.git)">
-        <button id="startBot">Start Bot</button>
-    </div>
-
-    <div>
-        <h2>Bots</h2>
-        <ul id="botList"></ul>
-    </div>
-
-    <div>
-        <h2>Console</h2>
-        <textarea id="consoleOutput" readonly></textarea>
-    </div>
-
+    <title>Bonk</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue.js CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center p-4">
+    <div id="app" class="w-full max-w-4xl">
+        <h1 class="text-3xl font-bold mb-6 text-center">Bonk</h1>
+
+        <!-- Start Bot Form -->
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-2">Start a Bonk</h2>
+            <div class="flex gap-2">
+                <input v-model="botName" type="text" placeholder="Bot Name"
+                    class="flex-1 p-2 bg-gray-800 border border-gray-700 rounded focus:outline-none focus:border-blue-500" />
+                <button @click="startBot" class="px-4 py-2 bg-green-600 rounded hover:bg-green-700 transition-colors">
+                    Start Bot
+                </button>
+            </div>
+        </div>
+
+        <!-- Bot List -->
+        <ul class="space-y-2">
+            <li v-for="bot in bots" :key="bot.name" @click="selectBot(bot.name)" :class="[
+            'p-2 bg-gray-800 rounded cursor-pointer flex justify-between items-center',
+            currentBot === bot.name ? 'bg-blue-600' : ''
+        ]">
+                <span>{{ bot.name }}</span>
+                <span class="text-sm text-gray-400">{{ bot.status }}</span>
+            </li>
+        </ul>
+
+        <!-- Control Buttons -->
+        <div class="flex gap-2 my-4">
+            <button @click="startSelectedBot"
+                class="px-4 py-2 bg-green-600 rounded hover:bg-green-700 transition-colors">
+                Start
+            </button>
+            <button @click="stopSelectedBot" class="px-4 py-2 bg-red-600 rounded hover:bg-red-700 transition-colors">
+                Stop
+            </button>
+            <button @click="restartSelectedBot"
+                class="px-4 py-2 bg-yellow-600 rounded hover:bg-yellow-700 transition-colors">
+                Restart
+            </button>
+        </div>
+
+        <!-- Console Output -->
+        <div>
+            <h2 class="text-xl font-semibold mb-2">Console ({{ currentBot || 'No Bot Selected' }})</h2>
+            <textarea v-model="consoleOutput" readonly
+                class="w-full h-48 p-2 bg-gray-800 border border-gray-700 rounded resize-none font-mono"></textarea>
+        </div>
+
+        <!-- Command Input -->
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-2">Send Command</h2>
+            <div class="flex gap-2">
+                <input v-model="command" type="text" placeholder="Enter command" @keydown.enter="sendCommand"
+                    class="flex-1 p-2 bg-gray-800 border border-gray-700 rounded focus:outline-none focus:border-blue-500" />
+                <button @click="sendCommand"
+                    class="px-4 py-2 bg-purple-600 rounded hover:bg-purple-700 transition-colors">
+                    Send Command
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vue.js Script -->
     <script>
-        const socket = io();
-        let currentBot = null;
+        const { createApp } = Vue;
 
-        document.getElementById('startBot').addEventListener('click', () => {
-            const botName = document.getElementById('botName').value;
-            const repoUrl = document.getElementById('repoUrl').value;
+        createApp({
+            data() {
+                return {
+                    botName: '',
+                    bots: [], // List of bots fetched from the server
+                    currentBot: null, // Currently selected bot
+                    consoleOutput: '', // Current console output
+                    socket: null,
+                    command: '',
+                };
+            },
+            methods: {
+                async fetchBots() {
+                    try {
+                        const response = await fetch('/api/bots');
+                        this.bots = await response.json();
+                    } catch (error) {
+                        console.error('Failed to fetch bots:', error.message);
+                    }
+                },
+                startBot() {
+                    if (!this.botName) {
+                        alert('Please provide a bot name');
+                        return;
+                    }
 
-            if (!botName || !repoUrl) {
-                alert('Please provide both a bot name and repository URL');
-                return;
-            }
+                    // Emit the startBot event to the server
+                    this.socket.emit('startBot', { botName: this.botName });
 
-            socket.emit('startBot', { repoUrl, botName });
-        });
+                    // Clear the input
+                    this.botName = '';
+                },
+                sendCommand() {
+                    if (!this.currentBot || !this.command) {
+                        alert('Please select a bot and enter a command');
+                        return;
+                    }
 
-        socket.on('botStarted', ({ name }) => {
-            const botList = document.getElementById('botList');
-            const li = document.createElement('li');
-            li.textContent = name;
-            li.addEventListener('click', () => {
-                currentBot = name;
-                document.getElementById('consoleOutput').value = '';
-            });
-            botList.appendChild(li);
-        });
+                    // Emit the command to the server
+                    this.socket.emit('sendCommand', { botName: this.currentBot, command: this.command });
 
-        socket.on('botOutput', ({ name, output }) => {
-            if (name === currentBot) {
-                document.getElementById('consoleOutput').value += output;
-            }
-        });
+                    // Clear the command input
+                    this.command = '';
+                },
+                startSelectedBot() {
+                    if (!this.currentBot) {
+                        alert('Please select a bot');
+                        return;
+                    }
 
-        socket.on('botError', ({ name, error }) => {
-            if (name === currentBot) {
-                document.getElementById('consoleOutput').value += `[ERROR] ${error}`;
-            }
-        });
+                    this.socket.emit('startBot', { botName: this.currentBot });
+                },
+                stopSelectedBot() {
+                    if (!this.currentBot) {
+                        alert('Please select a bot');
+                        return;
+                    }
 
-        socket.on('botClosed', ({ name }) => {
-            if (name === currentBot) {
-                currentBot = null;
-                document.getElementById('consoleOutput').value += `\nBot ${name} closed\n`;
-            }
-        });
+                    this.socket.emit('stopBot', { botName: this.currentBot });
+                },
+                restartSelectedBot() {
+                    if (!this.currentBot) {
+                        alert('Please select a bot');
+                        return;
+                    }
 
-        socket.on('error', (message) => {
-            alert(message);
-        });
+                    this.socket.emit('restartBot', { botName: this.currentBot });
+                },
+                async selectBot(name) {
+                    this.currentBot = name;
+
+                    // Fetch logs for the selected bot
+                    try {
+                        const response = await fetch(`/api/logs/${name}`);
+                        const data = await response.json();
+                        this.consoleOutput = data.log || ''; // Display the log history
+                    } catch (error) {
+                        console.error(`Failed to fetch logs for bot ${name}: ${error.message}`);
+                        this.consoleOutput = 'Log not available';
+                    }
+                },
+            },
+            mounted() {
+                this.socket = io();
+
+                // Fetch the list of bots when the app loads
+                this.fetchBots();
+
+                // Listen for botStarted event
+                this.socket.on('botStarted', ({ name }) => {
+                    this.fetchBots(); // Refresh the bot list
+                });
+
+                // Listen for botOutput event
+                this.socket.on('botOutput', ({ name, output }) => {
+                    console.log(`botOutput: ${name} - ${output}`);
+                    if (name === this.currentBot) {
+                        this.consoleOutput += output; // Append to the console output
+                    }
+                });
+
+                // Listen for botError event
+                this.socket.on('botError', ({ name, error }) => {
+                    if (name === this.currentBot) {
+                        this.consoleOutput += `[ERROR] ${error}`;
+                    }
+                });
+
+                // Listen for botClosed event
+                this.socket.on('botClosed', ({ name }) => {
+                    this.fetchBots(); // Refresh the bot list
+                    if (name === this.currentBot) {
+                        this.consoleOutput += `\nBot ${name} closed\n`;
+                        this.currentBot = null;
+                    }
+                });
+
+                // Handle errors
+                this.socket.on('error', (message) => {
+                    alert(message);
+                });
+            },
+        }).mount('#app');
     </script>
 </body>
+
 </html>
